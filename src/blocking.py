@@ -1,16 +1,15 @@
 """
 blocking.py
 
-High-performance blocking engine for
-Amazon ML Challenge - Business Entity Resolution
-
-Version: 2.0
+Production Blocking Engine
+Amazon ML Challenge
 """
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 import pandas as pd
 
@@ -26,242 +25,245 @@ from block_keys import (
 )
 
 
-# ============================================================
-# PREPROCESSING
-# ============================================================
-
-def preprocess(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalize business names and addresses.
-    """
-
-    df = df.copy()
-
-    print("Normalizing business names...")
-
-    df["norm_name"] = (
-        df["business_name"]
-        .fillna("")
-        .map(normalize_business_name)
-    )
-
-    print("Normalizing addresses...")
-
-    df["norm_address"] = (
-        df["business_address"]
-        .fillna("")
-        .map(normalize_address)
-    )
-
-    return df
-
-
-# ============================================================
-# BLOCK INDEX
-# ============================================================
-
-class BlockIndex:
-    """
-    Stores multiple blocking indexes.
-
-    Every key maps to a list of candidate row indices.
-    """
+class CandidateGenerator:
 
     def __init__(self):
+        self.source2 = None
+        self.source3 = None
+        self.combined = None
 
         self.name_index = defaultdict(list)
-
         self.address_index = defaultdict(list)
 
-    def add_record(self, idx: int, row: pd.Series):
+    # =====================================================
+    # PREPROCESS
+    # =====================================================
 
+    def preprocess(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+
+        print("Normalizing business names...")
+        start = time.time()
+        df["norm_name"] = (
+            df["business_name"]
+            .fillna("")
+            .map(normalize_business_name)
+        )
+        print(f"Business names normalized in {time.time()-start:.2f} sec")
+
+        print("Normalizing addresses...")
+        start = time.time()
+        df["norm_address"] = (
+            df["business_address"]
+            .fillna("")
+            .map(normalize_address)
+        )
+        print(f"Addresses normalized in {time.time()-start:.2f} sec")
+
+        return df
+
+    # =====================================================
+    # LOAD DATA
+    # =====================================================
+
+    def load_sources(self, source2: pd.DataFrame, source3: pd.DataFrame):
+        print("Preprocessing Source2...")
+        self.source2 = self.preprocess(source2)
+
+        print("Preprocessing Source3...")
+        self.source3 = self.preprocess(source3)
+
+        self.combined = pd.concat(
+            [self.source2, self.source3],
+            ignore_index=True,
+        )
+
+    # =====================================================
+    # BUILD INDEXES
+    # =====================================================
+
+    def build_indexes(self):
+        print("Building Name Index...")
+        for idx, row in self.combined.iterrows():
+            country = str(row["country"])
+            keys = generate_name_keys(row["norm_name"])
+            for key in keys:
+                self.name_index[(country, key)].append(idx)
+
+        print("Building Address Index...")
+        for idx, row in self.combined.iterrows():
+            country = str(row["country"])
+            keys = generate_address_keys(row["norm_address"])
+            for key in keys:
+                self.address_index[(country, key)].append(idx)
+
+        print("Name Blocks :", len(self.name_index))
+        print("Address Blocks :", len(self.address_index))
+
+    # =====================================================
+    # RETRIEVE CANDIDATES
+    # =====================================================
+
+    def retrieve_candidates(self, row: pd.Series) -> Set[int]:
         country = str(row["country"])
+        candidate_ids = set()
 
-        # -------------------------
-        # Name Keys
-        # -------------------------
-
+        # -----------------------------
+        # Name Index
+        # -----------------------------
         for key in generate_name_keys(row["norm_name"]):
+            candidate_ids.update(
+                self.name_index.get((country, key), [])
+            )
 
-            self.name_index[(country, key)].append(idx)
-
-        # -------------------------
-        # Address Keys
-        # -------------------------
-
+        # -----------------------------
+        # Address Index
+        # -----------------------------
         for key in generate_address_keys(row["norm_address"]):
-
-            self.address_index[(country, key)].append(idx)
-
-    def build(self, df: pd.DataFrame):
-
-        print("Building blocking indexes...")
-
-        for idx, row in df.iterrows():
-
-            self.add_record(idx, row)
-
-        print(
-            f"Name Blocks    : {len(self.name_index)}"
-        )
-
-        print(
-            f"Address Blocks : {len(self.address_index)}"
-        )
-
-
-# ============================================================
-# BUILD INDEX
-# ============================================================
-
-def build_indexes(
-        
-    source2: pd.DataFrame,
-    source3: pd.DataFrame,
-):
-
-    source2 = preprocess(source2)
-
-    source3 = preprocess(source3)
-
-    combined = pd.concat(
-
-        [source2, source3],
-
-        ignore_index=True
-
-    )
-
-    block_index = BlockIndex()
-
-    block_index.build(combined)
-
-    return combined, block_index
-# ============================================================
-# GET CANDIDATE INDICES
-# ============================================================
-
-def get_candidate_indices(
-    row: pd.Series,
-    block_index: BlockIndex,
-) -> Set[int]:
-    """
-    Retrieve candidate row indices using
-    multiple blocking keys.
-    """
-
-    country = str(row["country"])
-
-    candidate_indices = set()
-
-    # -------------------------
-    # Name Blocking
-    # -------------------------
-
-    for key in generate_name_keys(row["norm_name"]):
-
-        candidate_indices.update(
-
-            block_index.name_index.get(
-
-                (country, key),
-
-                []
-
+            candidate_ids.update(
+                self.address_index.get((country, key), [])
             )
 
-        )
+        return candidate_ids
 
-    # -------------------------
-    # Address Blocking
-    # -------------------------
+    # =====================================================
+    # FAST FILTER
+    # =====================================================
 
-    for key in generate_address_keys(row["norm_address"]):
+    def fast_filter(
+        self,
+        source_row: pd.Series,
+        candidate_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        if candidate_df.empty:
+            return candidate_df
 
-        candidate_indices.update(
+        source_len = len(source_row["norm_name"])
+        min_len = max(3, source_len // 2)
+        max_len = source_len * 2
 
-            block_index.address_index.get(
+        filtered = candidate_df[
+            candidate_df["norm_name"].str.len().between(min_len, max_len)
+        ]
 
-                (country, key),
+        return filtered
 
-                []
+    # =====================================================
+    # RANK CANDIDATES
+    # =====================================================
 
+    def rank_candidates(
+        self,
+        source_row: pd.Series,
+        candidate_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        if candidate_df.empty:
+            return candidate_df
+
+        scores = []
+        for _, row in candidate_df.iterrows():
+            score = composite_similarity(
+                source_row["business_name"],
+                row["business_name"],
+                source_row["business_address"],
+                row["business_address"],
             )
+            scores.append(score)
 
-        )
-
-    return candidate_indices
-
-
-# ============================================================
-# RANK CANDIDATES
-# ============================================================
-
-def rank_candidates(
-    source_row: pd.Series,
-    candidate_df: pd.DataFrame,
-):
-
-    if candidate_df.empty:
+        candidate_df = candidate_df.copy()
+        candidate_df["score"] = scores
+        candidate_df = candidate_df.sort_values(by="score", ascending=False)
 
         return candidate_df
 
-    scores = []
+    # =====================================================
+    # TOP K
+    # =====================================================
 
-    for _, row in candidate_df.iterrows():
+    def select_top_k(self, ranked_df: pd.DataFrame, k: int = 30) -> pd.DataFrame:
+        if ranked_df.empty:
+            return ranked_df
+        return ranked_df.head(k)
 
-        score = composite_similarity(
+    # =====================================================
+    # GENERATE CANDIDATES
+    # =====================================================
 
-            source_row["business_name"],
+    def generate(
+        self,
+        source1: pd.DataFrame,
+        source2: pd.DataFrame,
+        source3: pd.DataFrame,
+        top_k: int = 30,
+    ) -> Dict[str, List[str]]:
+        print("Loading Sources...")
+        self.load_sources(source2, source3)
 
-            row["business_name"],
+        print("Building Indexes...")
+        self.build_indexes()
 
-            source_row["business_address"],
+        print("Preprocessing Source1...")
+        source1 = self.preprocess(source1)
 
-            row["business_address"]
+        results = {}
+        total_candidates = 0
+        max_candidates = 0
+        min_candidates = 999999
 
-        )
+        print("Generating Candidate Pairs...")
+        for idx, row in source1.iterrows():
+            candidate_ids = self.retrieve_candidates(row)
 
-        scores.append(score)
+            if len(candidate_ids) == 0:
+                results[row["entity_id"]] = []
+                continue
 
-    candidate_df = candidate_df.copy()
+            candidate_df = self.combined.iloc[list(candidate_ids)]
+            candidate_df = self.fast_filter(row, candidate_df)
+            candidate_df = self.rank_candidates(row, candidate_df)
+            candidate_df = self.select_top_k(candidate_df, top_k)
 
-    candidate_df["score"] = scores
+            ids = candidate_df["entity_id"].tolist()
+            results[row["entity_id"]] = ids
 
-    candidate_df = candidate_df.sort_values(
+            total_candidates += len(ids)
+            max_candidates = max(max_candidates, len(ids))
+            min_candidates = min(min_candidates, len(ids))
 
-        "score",
+            if idx % 1000 == 0:
+                print(f"{idx} Source1 Records Processed")
 
-        ascending=False
+        avg_candidates = total_candidates / len(source1)
 
-    )
+        print("\n==============================")
+        print("Blocking Statistics")
+        print("==============================")
+        print("Average Candidates :", round(avg_candidates, 2))
+        print("Maximum Candidates :", max_candidates)
+        print("Minimum Candidates :", min_candidates)
+        print("==============================\n")
 
-    return candidate_df
-
-
-# ============================================================
-# TOP K
-# ============================================================
-
-def top_k_candidates(
-
-    ranked_df,
-
-    k=30,
-
-):
-
-    return ranked_df.head(k)
+        return results
 
 
-# ============================================================
-# MERGE CANDIDATES
-# ============================================================
+# =====================================================
+# TEST
+# =====================================================
 
-def merge_candidate_sets(
+if __name__ == "__main__":
+    print("Loading Training Data...")
 
-    ranked_df,
+    s1 = pd.read_csv("dataset/train/train_source1.tsv", sep="\t")
+    s2 = pd.read_csv("dataset/train/train_source2.tsv", sep="\t")
+    s3 = pd.read_csv("dataset/train/train_source3.tsv", sep="\t")
 
-):
+    print("Source1 :", len(s1))
+    print("Source2 :", len(s2))
+    print("Source3 :", len(s3))
 
-    return ranked_df["entity_id"].tolist()
+    generator = CandidateGenerator()
+    candidates = generator.generate(s1, s2, s3, top_k=30)
+
+    first_key = next(iter(candidates))
+    print("\nExample Source1:", first_key)
+    print("Candidates:", candidates[first_key][:10])
