@@ -1,1 +1,5 @@
-experiment,score,notes 
+ID,Person,Change,Validation_F1,Precision,Recall,Runtime,Memory,Decision
+EXP001,P1,Baseline,0.XX,0.XX,0.XX,XX min,XX GB,Baseline
+EXP002,P2,Normalization X,0.XX,0.XX,0.XX,XX min,XX GB,Keep
+EXP003,P3,New features,0.XX,0.XX,0.XX,XX min,XX GB,Keep
+EXP004,P4,Blocking Y,0.XX,0.XX,0.XX,XX min,XX GB,Reject
