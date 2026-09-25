@@ -1,0 +1,9 @@
+# Ignore dataset files
+dataset/train/*
+dataset/test/*
+!dataset/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
