@@ -14,11 +14,11 @@ from typing import Dict, List, Set
 import pandas as pd
 
 from similarity import (
-    normalize_business_name,
-    normalize_address,
     batch_normalize_business_name,
     batch_normalize_address,
-    composite_similarity,
+    token_sort_ratio,
+    jaccard_similarity,
+    DEFAULT_WEIGHTS,
 )
 
 from block_keys import (
@@ -166,24 +166,63 @@ class CandidateGenerator:
         source_row: pd.Series,
         candidate_df: pd.DataFrame,
     ) -> pd.DataFrame:
+        """
+        Rank candidates using already-normalized columns.
+
+        The previous implementation called ``composite_similarity`` for every
+        candidate. That function normalizes both names and addresses again and
+        the loop used ``iterrows()``, creating a large Python overhead at scale.
+
+        Here we reuse the normalized values produced by ``preprocess()`` and
+        compute the same four signals directly. The weighted score is therefore
+        semantically equivalent to ``composite_similarity()`` while avoiding
+        repeated normalization and pandas row-object creation.
+        """
         if candidate_df.empty:
             return candidate_df
 
-        scores = []
-        for _, row in candidate_df.iterrows():
-            score = composite_similarity(
-                source_row["business_name"],
-                row["business_name"],
-                source_row["business_address"],
-                row["business_address"],
-            )
-            scores.append(score)
-
         candidate_df = candidate_df.copy()
-        candidate_df["score"] = scores
-        candidate_df = candidate_df.sort_values(by="score", ascending=False)
 
-        return candidate_df
+        source_name = str(source_row["norm_name"])
+        source_address = str(source_row["norm_address"])
+
+        candidate_names = candidate_df["norm_name"].fillna("").astype(str).tolist()
+        candidate_addresses = candidate_df["norm_address"].fillna("").astype(str).tolist()
+
+        name_token_sort = [
+            token_sort_ratio(source_name, value)
+            for value in candidate_names
+        ]
+        name_jaccard = [
+            jaccard_similarity(source_name, value)
+            for value in candidate_names
+        ]
+        address_token_sort = [
+            token_sort_ratio(source_address, value)
+            for value in candidate_addresses
+        ]
+        address_jaccard = [
+            jaccard_similarity(source_address, value)
+            for value in candidate_addresses
+        ]
+
+        weights = DEFAULT_WEIGHTS
+        candidate_df["score"] = [
+            (
+                weights["name_token_sort"] * nts
+                + weights["name_jaccard"] * nj
+                + weights["address_token_sort"] * ats
+                + weights["address_jaccard"] * aj
+            )
+            for nts, nj, ats, aj in zip(
+                name_token_sort,
+                name_jaccard,
+                address_token_sort,
+                address_jaccard,
+            )
+        ]
+
+        return candidate_df.sort_values(by="score", ascending=False)
 
     # =====================================================
     # TOP K
@@ -218,6 +257,8 @@ class CandidateGenerator:
         total_candidates = 0
         max_candidates = 0
         min_candidates = 999999
+        total_rank_time = 0.0
+        ranked_rows = 0
 
         print("Generating Candidate Pairs...")
         for idx, row in source1.iterrows():
@@ -229,8 +270,15 @@ class CandidateGenerator:
 
             candidate_df = self.combined.iloc[list(candidate_ids)]
             candidate_df = self.fast_filter(row, candidate_df)
+
+            rank_start = time.time()
             candidate_df = self.rank_candidates(row, candidate_df)
+            rank_elapsed = time.time() - rank_start
+
             candidate_df = self.select_top_k(candidate_df, top_k)
+
+            total_rank_time += rank_elapsed
+            ranked_rows += 1
 
             ids = candidate_df["entity_id"].tolist()
             results[row["entity_id"]] = ids
@@ -250,6 +298,9 @@ class CandidateGenerator:
         print("Average Candidates :", round(avg_candidates, 2))
         print("Maximum Candidates :", max_candidates)
         print("Minimum Candidates :", min_candidates)
+        if ranked_rows:
+            print("Average ranking time :", round(total_rank_time / ranked_rows, 6), "sec / ranked row")
+            print("Total ranking time :", round(total_rank_time, 2), "sec")
         print("==============================\n")
 
         return results
