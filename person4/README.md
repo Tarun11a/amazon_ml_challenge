@@ -1,116 +1,174 @@
-# Amazon ML Challenge
+# Person 4 – Blocking & Candidate Generation
 
-A machine learning solution developed for the Amazon ML Challenge. This project focuses on building an end-to-end ML pipeline for data preprocessing, feature engineering, model training, evaluation, and prediction.
+## Amazon ML Challenge – Business Entity Resolution
+
+### Role
+
+Responsible for designing and implementing the **Blocking and Candidate Generation** stage of the entity resolution pipeline.
+
+This module reduces the number of pairwise product comparisons by generating a high-quality set of candidate pairs before similarity scoring and classification.
 
 ---
 
-## Project Overview
+## Current Responsibilities
 
-The objective of this project is to develop a robust machine learning model capable of generating accurate predictions on the provided dataset.
-
-Key features include:
-- Data preprocessing and cleaning
-- Exploratory Data Analysis (EDA)
-- Feature engineering
-- Model training and evaluation
-- Prediction generation
-- Modular and reusable code structure
+- Product preprocessing for blocking
+- Block key generation
+- Blocking pipeline
+- Candidate generation
+- Candidate pair export
+- Blocking pipeline optimization (Phase 2)
 
 ---
 
 ## Project Structure
 
 ```
-amazon_ml_challenge/
-│
-├── data/                  # Dataset files
-├── notebooks/             # Jupyter notebooks
-├── src/                   # Source code
-├── models/                # Saved models
-├── outputs/               # Prediction files
-├── team_notes/            # Team documentation
-├── requirements.txt
-└── README.md
+person4/
+├── dataset/
+├── experiments/
+├── notebooks/
+├── output/
+├── src/
+│   ├── similarity.py
+│   ├── block_keys.py
+│   ├── blocking.py
+│   ├── candidate_generation.py
+│   ├── utils.py
+│   ├── train_at_scale.py
+│   └── predict_at_scale.py
+├── team_notes/
+├── README.md
+└── requirements.txt
 ```
 
 ---
 
-## Tech Stack
+# Completed Work
 
-- Python
-- Pandas
-- NumPy
-- Scikit-learn
-- Matplotlib
-- Seaborn
-- Jupyter Notebook
+### similarity.py
+- String similarity utilities
+- Text comparison helper functions
+- Similarity metrics used during blocking
 
----
-
-## Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/Tarun11a/amazon_ml_challenge.git
-```
-
-Navigate to the project:
-
-```bash
-cd amazon_ml_challenge
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
+Status: **Completed**
 
 ---
 
-## Usage
+### block_keys.py
+Implemented block key generation using normalized product attributes.
 
-Run the preprocessing and training scripts:
+Status: **Completed**
 
-```bash
-python train.py
+---
+
+### blocking.py
+Implemented the blocking pipeline for grouping products into candidate blocks.
+
+Status: **Completed**
+
+---
+
+### candidate_generation.py
+Implemented candidate pair generation from generated blocks.
+
+Current capabilities:
+
+- Generate candidate pairs
+- Remove duplicate pairs
+- Ignore self-pairs
+- Export candidate pairs
+
+Status: **Completed (Phase 1)**
+
+---
+
+### utils.py
+Contains helper utilities including:
+
+- File handling
+- Data preprocessing helpers
+- Candidate file saving utilities
+
+Status: **Completed**
+
+---
+
+## Current Progress
+
+### Phase 1
+
+Goal:
+
+Generate
+
+```
+candidate_pairs.tsv
 ```
 
-Generate predictions:
+Current status:
 
-```bash
-python predict.py
+- Similarity module completed
+- Block key generation completed
+- Blocking completed
+- Candidate generation completed
+- Candidate pair export implemented
+
+Remaining:
+
+- End-to-end validation
+- Verify generated candidate pairs
+
+---
+
+### Phase 2 (Upcoming)
+
+Performance optimization.
+
+Planned improvements:
+
+- Faster preprocessing
+- Efficient block indexing
+- Reduced memory usage
+- Chunked processing
+- Parallel blocking
+- Large-scale candidate generation
+
+---
+
+## Pipeline
+
+```
+Dataset
+    │
+    ▼
+Preprocessing
+    │
+    ▼
+Block Key Generation
+    │
+    ▼
+Blocking
+    │
+    ▼
+Candidate Generation
+    │
+    ▼
+candidate_pairs.tsv
 ```
 
 ---
 
-## Results
+## Notes
 
-- Data preprocessing completed
-- Machine Learning model trained
-- Predictions generated successfully
+Current focus is correctness of candidate generation.
 
----
-
-## Future Improvements
-
-- Hyperparameter tuning
-- Ensemble models
-- Deep learning approaches
-- Model deployment using FastAPI
-- CI/CD integration
+Performance optimization will begin only after successful generation of `candidate_pairs.tsv`.
 
 ---
 
 ## Author
 
-**Tarun**
+**Tarun Botham**
 
-GitHub: https://github.com/Tarun11a
-
----
-
-## License
-
-This project is intended for educational and research purposes.
+Role: **Person 4 – Blocking & Candidate Generation**
