@@ -18,17 +18,38 @@ def main():
 
     s1 = pd.read_csv(
         "dataset/test/test_source1.tsv",
-        sep="\t"
+        sep="\t",
+        usecols=[
+            "entity_id",
+            "business_name",
+            "business_address",
+            "country",
+        ],
+        nrows=10000,
     )
 
     s2 = pd.read_csv(
         "dataset/test/test_source2.tsv",
-        sep="\t"
+        sep="\t",
+        usecols=[
+            "entity_id",
+            "business_name",
+            "business_address",
+            "country",
+        ],
+        nrows=10000,
     )
 
     s3 = pd.read_csv(
         "dataset/test/test_source3.tsv",
-        sep="\t"
+        sep="\t",
+        usecols=[
+            "entity_id",
+            "business_name",
+            "business_address",
+            "country",
+        ],
+        nrows=10000,
     )
 
     print("Source1 :", len(s1))

@@ -16,6 +16,8 @@ import pandas as pd
 from similarity import (
     normalize_business_name,
     normalize_address,
+    batch_normalize_business_name,
+    batch_normalize_address,
     composite_similarity,
 )
 
@@ -40,25 +42,31 @@ class CandidateGenerator:
     # =====================================================
 
     def preprocess(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Normalize large datasets using vectorized pandas string operations.
+        This avoids Python-level .map() calls over millions of rows.
+        """
         df = df.copy()
 
         print("Normalizing business names...")
         start = time.time()
-        df["norm_name"] = (
+        df["norm_name"] = batch_normalize_business_name(
             df["business_name"]
-            .fillna("")
-            .map(normalize_business_name)
         )
-        print(f"Business names normalized in {time.time()-start:.2f} sec")
+        print(
+            f"Business names normalized in "
+            f"{time.time() - start:.2f} sec"
+        )
 
         print("Normalizing addresses...")
         start = time.time()
-        df["norm_address"] = (
+        df["norm_address"] = batch_normalize_address(
             df["business_address"]
-            .fillna("")
-            .map(normalize_address)
         )
-        print(f"Addresses normalized in {time.time()-start:.2f} sec")
+        print(
+            f"Addresses normalized in "
+            f"{time.time() - start:.2f} sec"
+        )
 
         return df
 
@@ -83,20 +91,21 @@ class CandidateGenerator:
     # =====================================================
 
     def build_indexes(self):
-        print("Building Name Index...")
-        for idx, row in self.combined.iterrows():
-            country = str(row["country"])
-            keys = generate_name_keys(row["norm_name"])
-            for key in keys:
-                self.name_index[(country, key)].append(idx)
+        print("Building Name and Address Indexes...")
+        start = time.time()
 
-        print("Building Address Index...")
-        for idx, row in self.combined.iterrows():
-            country = str(row["country"])
-            keys = generate_address_keys(row["norm_address"])
-            for key in keys:
+        rows = self.combined[
+            ["country", "norm_name", "norm_address"]
+        ].itertuples(index=False, name=None)
+
+        for idx, (country, norm_name, norm_address) in enumerate(rows):
+            country = str(country)
+            for key in generate_name_keys(norm_name):
+                self.name_index[(country, key)].append(idx)
+            for key in generate_address_keys(norm_address):
                 self.address_index[(country, key)].append(idx)
 
+        print(f"Indexes built in {time.time() - start:.2f} sec")
         print("Name Blocks :", len(self.name_index))
         print("Address Blocks :", len(self.address_index))
 

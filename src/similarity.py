@@ -168,6 +168,42 @@ def normalize_address(address: str | None) -> str:
     return normalize_text(expanded)
 
 
+def batch_normalize_business_name(series: "pd.Series") -> "pd.Series":
+    """
+    Vectorized pandas normalization for large Series.
+    Keeps the same normalization semantics as normalize_business_name()
+    but avoids calling the Python scalar function once per row.
+    """
+    s = series.fillna("").astype("string").str.lower()
+    for pattern, replacement in LEGAL_SUFFIXES.items():
+        s = s.str.replace(
+            pattern,
+            replacement,
+            regex=True,
+        )
+    s = s.str.replace(_NON_ALNUM_RE, " ", regex=True)
+    s = s.str.replace(_WHITESPACE_RE, " ", regex=True).str.strip()
+    return s
+
+
+def batch_normalize_address(series: "pd.Series") -> "pd.Series":
+    """
+    Vectorized pandas normalization for large Series.
+    Keeps the same normalization semantics as normalize_address()
+    but avoids Python-level per-row function calls.
+    """
+    s = series.fillna("").astype("string").str.lower()
+    for pattern, replacement in ADDRESS_ABBREVIATIONS.items():
+        s = s.str.replace(
+            pattern,
+            replacement,
+            regex=True,
+        )
+    s = s.str.replace(_NON_ALNUM_RE, " ", regex=True)
+    s = s.str.replace(_WHITESPACE_RE, " ", regex=True).str.strip()
+    return s
+
+
 def first_token(text: str) -> str:
     """First whitespace-delimited token of an already-normalized string.
     Used by blocking.py as a cheap blocking key (e.g. first word of the
